@@ -11,6 +11,7 @@
 
 struct timespec start;
 int *learningTime;
+long timeUsed=0;
 sem_t *flag;
 pthread_mutex_t mutex;
 
@@ -22,21 +23,31 @@ int T;
 uint64_t getTime() {
 	struct timespec current;
 	clock_gettime(CLOCK_MONOTONIC_RAW, &current);
-	return (current.tv_sec - start.tv_sec) * 1000000 + (current.tv_usec - start.tv_usec);
+	return (current.tv_sec - start.tv_sec) * 1000000 + (current.tv_nsec - start.tv_nsec) / 1000;
 }
 
 void *tachikoma (void *arg) {
-	pthread_mutex_lock(&mutex);
-	int tid = *(int *) arg;
-	uint64_t time = getTime();
-	printf("It is %d thread. Time = %ld\n", tid, time);
-	sleep(2);
-	printf("done!");
-	pthread_mutex_unlock(&mutex);
+	int tid = *(int*) arg;
+	long t;
+
+	while(timeUsed < T*1000000) {
+		timeUsed += getTime();
+		printf("time used: %ld\n", timeUsed);
+		pthread_mutex_lock(&mutex);
+		uint64_t time = getTime();
+		printf("It is %d thread. Time = %ld\n", tid, time);
+		sleep(2);
+		printf("done!\n");
+		pthread_mutex_unlock(&mutex);
+	}
 }
 
 int main (int argc, char **argv) {
-	// if () {}
+	if (argc!=5) {
+		fprintf(stderr, "Please enter as following: ./main.out <int> <int> <int> <int>\n");
+		exit(-1);
+	}
+
 	N = atoi(argv[1]);
 	M = atoi(argv[2]);
 	E = atoi(argv[3]);
