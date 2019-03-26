@@ -9,16 +9,28 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#define STATE_LEARN 0
+#define STATE_HELPER 1
+#define STATE_FREE -1
+
 struct timespec start;
-int *learningTime;
-long timeUsed=0;
 sem_t *flag;
 pthread_mutex_t mutex;
+sem_t simulMutex;
+sem_t simulLock[100];
+pthread_mutex_t serverMutex;
 
 int N;
 int M;
 int E;
 int T;
+
+int* learningTime;
+int* totalReport;
+int report;
+int *tachi_state;
+
+long timeUsed = 0;
 
 uint64_t getTime() {
 	struct timespec current;
@@ -26,21 +38,10 @@ uint64_t getTime() {
 	return (current.tv_sec - start.tv_sec) * 1000000 + (current.tv_nsec - start.tv_nsec) / 1000;
 }
 
-void *tachikoma (void *arg) {
-	int tid = *(int*) arg;
-	long t;
-
-	while(timeUsed < T*1000000) {
-		timeUsed += getTime();
-		printf("time used: %ld\n", timeUsed);
-		pthread_mutex_lock(&mutex);
-		uint64_t time = getTime();
-		printf("It is %d thread. Time = %ld\n", tid, time);
-		sleep(2);
-		printf("done!\n");
-		pthread_mutex_unlock(&mutex);
-	}
-}
+void *tachikoma (void *arg);
+void check(int tid);
+void done(int tid);
+void learn(int tid);
 
 int main (int argc, char **argv) {
 	if (argc!=5) {
@@ -56,25 +57,39 @@ int main (int argc, char **argv) {
 	pthread_t tachi_threads[N];
 	int tachikomaId[N];
 	pthread_mutex_init(&mutex, NULL);
+	//pthread_mutex_init(&simulMutex, NULL);
+	pthread_mutex_init(&serverMutex, NULL);
+    sem_init(&simulMutex, 0, 1);
 
 	learningTime = (int*)malloc(sizeof(int) * N);
+	totalReport = (int*)malloc(sizeof(int) * N);
+	tachi_state = (int*)malloc(sizeof(int) * N);
+	report = 0;
 
 	flag = sem_open("/semmie", O_CREAT, 0666, M);
 	sem_unlink("/semmie");
-
+	if(flag == SEM_FAILED) {
+		printf("Open semaphore failed..\n");
+		return 1;
+	}
 	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 	int i;
 	for(i=0; i<N; i++) {
-		tachikomaId[i] = i;
-		learningTime[i] = 0;
-		pthread_create(&tachi_threads[i], NULL, tachikoma, (void*)&tachikomaId[i]);
+		tachi_state[i] = STATE_FREE;
+        totalReport[i] = 0;
+        tachikomaId[i] = i;
+        learningTime[i] = 0;
+		sem_init(&simulLock[i], 0, 0);
+	}
+	int check;
+	for(i=0; i<N; i++) {
+		check = pthread_create(&tachi_threads[i], NULL, tachikoma, (void*)&tachikomaId[i]);
+		if (check < 0) {
+			printf("Pthread %d failed..\n", i);
+		}
 	}
 
 	sleep(T);
-
-	for (i=0; i<N; i++) {
-		tachikomaId[i] = -1;
-	}
 
 	for(i = 0; i<N; i++) {
 		pthread_join(tachi_threads[i], NULL);
@@ -82,9 +97,89 @@ int main (int argc, char **argv) {
 
 	printf("=============================================\nTime used = %ld\n", getTime());
 
+	free(tachi_state);
+	free(totalReport);
 	free(learningTime);
 	sem_close(flag);
 	sem_unlink("/semmie");
 
 	return 0;
+}
+
+void *tachikoma (void *arg) {
+	int tid = *(int*) arg;
+	int left = (tid + N - 1) % N;
+	int right = (tid + 1) % N;
+	while(1) {
+		if(timeUsed > T*1000000) break;
+		else {
+			learn(tid);
+			sleep(0);
+			done(tid);
+		}
+		timeUsed = getTime();
+		//printf("Time used = %ld\n", timeUsed);
+	}
+}
+
+void learn(int tid) {
+
+	//tachi_state[tid] = STATE_FREE;
+	check(tid);
+	sem_wait(&simulLock[tid]);
+
+}
+
+void check(int tid) {
+	int left = (tid + N - 1) % N;
+	int right = (tid + 1) % N;
+
+	if(tachi_state[tid] == STATE_FREE) {
+		pthread_mutex_lock(&mutex);
+		if(tachi_state[left] != STATE_LEARN && tachi_state[right] != STATE_LEARN) {
+			tachi_state[tid] = STATE_LEARN;
+			//tachi_state[left] = STATE_HELPER;
+			//tachi_state[right] = STATE_HELPER;
+			//pthread_yield();
+			pthread_mutex_unlock(&mutex);
+
+			sem_wait(flag);
+
+   			printf("LEARN[%ld]: %d, %d, %d\n", getTime(), tid, left, right);
+			sleep(E);
+			long t=getTime();
+			printf("DONE[%ld]: %d, %d, %d\n", t, tid, left, right);
+    			//tachi_state[tid] = STATE_FREE;
+			//tachi_state[left] = STATE_FREE;
+			//tachi_state[right] = STATE_FREE;
+			//pthread_yield();
+
+    			sem_post(flag);
+			sem_post(&simulLock[tid]);
+    
+    			pthread_mutex_lock(&serverMutex);
+		   	report++;
+		    	totalReport[tid] += 1;
+			printf("UPDATE[%ld]: %d, %d\n", getTime(), tid, report);
+			pthread_mutex_unlock(&serverMutex);
+
+		}
+		else pthread_mutex_unlock(&mutex);
+
+	}
+
+}
+
+void done(int tid) {
+	int left = (tid + N - 1) % N;
+	int right = (tid + 1) % N;
+
+	sem_wait(&simulMutex);
+	tachi_state[tid] = STATE_FREE;
+	sem_post(&simulMutex);
+
+	//printf("all is done for %d\n", tid);
+    
+	check(left);
+	check(right);
 }
