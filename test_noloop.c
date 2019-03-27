@@ -166,7 +166,9 @@ void check(int tid) {
 			sem_wait(flag);
 
    			printf("LEARN[%ld]: %d, %d, %d\n", getTime(), tid, left, right);
-			sleep(E);
+			srand(time(NULL));
+			int ran_time = 1 + rand() % E;
+			sleep(ran_time);
 			learningTime[tid] += calTime(curr);
 			printf("DONE[%ld]: %d, %d, %d\n", getTime(), tid, left, right);
     			//tachi_state[tid] = STATE_FREE;
