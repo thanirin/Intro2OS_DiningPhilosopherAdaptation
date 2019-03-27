@@ -91,14 +91,19 @@ int main (int argc, char **argv) {
 		sem_init(&simulLock[i], 0, 0);
 	}
 	int check;
-	for(i=0; i<N; i++) {
-		check = pthread_create(&tachi_threads[i], NULL, tachikoma, (void*)&tachikomaId[i]);
-		if (check < 0) {
-			printf("Pthread %d failed..\n", i);
+	int j=0;
+	while(getTime() < T*1000000) {
+		for(i=0; i<N; i++) {
+			int a = j%N;
+			check = pthread_create(&tachi_threads[a], NULL, tachikoma, (void*)&tachikomaId[a]);
+			if (check < 0) {
+				printf("Pthread %d failed..\n", i);
+			}
+		j++;
 		}
+		j++;
 	}
-
-	sleep(T);
+	//sleep(T);
 
 	for(i = 0; i<N; i++) {
 		pthread_join(tachi_threads[i], NULL);
@@ -125,8 +130,7 @@ void *tachikoma (void *arg) {
 	int tid = *(int*) arg;
 	int left = (tid + N - 1) % N;
 	int right = (tid + 1) % N;
-	while(1) {
-		if(timeUsed > T*1000000) break;
+		//if(timeUsed > T*1000000) break;
 		//else {
 			learn(tid);
 			sleep(0);
@@ -134,7 +138,6 @@ void *tachikoma (void *arg) {
 		//}
 		timeUsed = getTime();
 		//printf("Time used = %ld\n", timeUsed);
-	}
 }
 
 void learn(int tid) {
