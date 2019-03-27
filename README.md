@@ -4,12 +4,12 @@ An adaptation of dining philosopher problem using threads
 The group consists of 2 members.
 
 1) Klinton Chhun 6088111
->>> Write some parts of the code
->>> Debug the code
+- Write some parts of the code
+- Debug the code
 
 2) Thanirin Trironnarith 6088122
->>> Write the other parts of the code
->>> Debug the code
+- Write the other parts of the code
+- Debug the code
 
 ### Credit !!
 
