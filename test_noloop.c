@@ -109,7 +109,7 @@ int main (int argc, char **argv) {
 		pthread_join(tachi_threads[i], NULL);
 	}
 
-	printf("=============================================\n");
+	//printf("=============================================\n");
 
 	for(i=0; i<N; i++) {
 		printf("%d: %ld, %d\n", i, learningTime[i] / 1000000, totalReport[i]);
