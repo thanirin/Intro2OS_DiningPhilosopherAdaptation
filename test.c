@@ -8,6 +8,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sched.h>
+#include <errno.h>
+// #include <evos/tasks.h>
 
 #define STATE_LEARN 0
 #define STATE_HELPER 1
@@ -19,6 +22,7 @@ pthread_mutex_t mutex;
 sem_t simulMutex;
 sem_t simulLock[100];
 pthread_mutex_t serverMutex;
+pthread_t* tachi_threads;
 
 // typedef struct ticket_lock {
 // 	pthread_cond_t cond;
@@ -58,6 +62,56 @@ long timeUsed = 0;
 // 	pthread_mutex_unlock(&ticket->mutex);
 // }
 
+// void set_priority() {
+// 	pthread_t this_thread = pthread_self();
+// 	int policy = 0;
+// 	struct sched_param params;
+// 	int ret;
+//
+// 	params.sched_priority = sched_get_priority_max(SCHED_FIFO);
+// 	ret = pthread_setschedparam(this_thread, SCHED_FIFO, &params);
+// 	if(ret != 0 ) {
+// 		printf("Couldn't retrieve real-time shceduling parameters..\n");
+// 		return;
+// 	}
+// 	if(policy != SCHED_FIFO) {
+// 		printf("Scheduling is NOT SCHED_FIFO..\n");
+// 	}
+// }
+	//
+	// void high_priority(pthread_t thread) {
+	// 	struct sched_param params;
+	// 	// int policy = get_sched_policy();
+	// 	// params.sched_priority = sched_get_priority_max(SCHED_OTHER);
+	// 	// printf("%d\n", params.sched_priority);
+	// 	params.sched_priority = 10;
+	// 	printf("%d\n", params.sched_priority);
+	//
+	// 	int s = pthread_setschedparam(thread, SCHED_FIFO, &params);
+	// 	if(s!=0) {
+	// 		if(s==EPERM) {
+	// 			printf("EPERM\n");
+	// 		}
+	// 		else if(s==EINVAL) {
+	// 			printf("EINVAL\n");
+	// 		}
+	// 		else {
+	// 			printf("none\n");
+	// 		}
+	// 	}
+	// }
+	//
+	// void normal_priority(pthread_t thread) {
+	// 	struct sched_param params;
+	// 	// int policy = get_sched_policy();
+	// 	params.sched_priority = sched_get_priority_min(SCHED_OTHER);
+	//
+	// 	int s = pthread_setschedparam(thread, SCHED_OTHER, &params);
+	// 	if(s!=0) {
+	// 		printf("norm pri ERROR! s = %d\n", s);
+	// 	}
+	// }
+
 uint64_t getTime() {
 	struct timespec current;
 	clock_gettime(CLOCK_MONOTONIC_RAW, &current);
@@ -86,7 +140,10 @@ int main (int argc, char **argv) {
 	E = atoi(argv[3]);
 	T = atoi(argv[4]);
 
-	pthread_t tachi_threads[N];
+	// pthread_t tachi_threads[N];
+	tachi_threads = calloc(sizeof(*tachi_threads), N);
+	pthread_attr_t attr;
+	struct sched_param param;
 	int tachikomaId[N];
 	pthread_mutex_init(&mutex, NULL);
 	pthread_mutex_init(&serverMutex, NULL);
@@ -103,6 +160,12 @@ int main (int argc, char **argv) {
 		printf("Open semaphore failed..\n");
 		return 1;
 	}
+
+	pthread_attr_init(&attr);
+	pthread_attr_getschedparam(&attr, &param);
+	(param.sched_priority) ++;
+	pthread_attr_getschedparam(&attr, &param);
+
 	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 	int i;
 	for(i=0; i<N; i++) {
@@ -114,8 +177,8 @@ int main (int argc, char **argv) {
 	}
 	int issuccessful;
 	for(i=0; i<N; i++) {
-		issuccessful = pthread_create(&tachi_threads[i], NULL, tachikoma, (void*)&tachikomaId[i]);
-		if (check < 0) {
+		issuccessful = pthread_create(&tachi_threads[i], &attr, tachikoma, (void*)&tachikomaId[i]);
+		if (issuccessful < 0) {
 			printf("Pthread %d failed..\n", i);
 		}
 	}
@@ -138,6 +201,7 @@ int main (int argc, char **argv) {
 	}
 
 	printf("MASTER: %d\n", report);
+	printf("Time used %ld\n", getTime());
 
 	free(tachi_state);
 	free(totalReport);
@@ -178,7 +242,7 @@ void check(int tid) {
 	struct timespec curr;
 
 	if(tachi_state[tid] == STATE_FREE) {
-		// sleep(0.1);
+		if(learningTime[tid] > learningTime[right] || learningTime[tid] > learningTime[left]) sleep(1);
 		pthread_mutex_lock(&mutex);
 		if(tachi_state[left] != STATE_LEARN && tachi_state[right] != STATE_LEARN) {
 			clock_gettime(CLOCK_MONOTONIC_RAW, &curr);
@@ -194,6 +258,10 @@ void check(int tid) {
 			sleep(ran_time);
 			learningTime[tid] += calTime(curr);
 			printf("DONE[%ld]: %d, %d, %d\n", getTime(), tid, left, right);
+
+			// high_priority(tachi_threads[left]);
+			// high_priority(tachi_threads[right]);
+			// normal_priority(pthread_self());
 
     	sem_post(flag);
 			sem_post(&simulLock[tid]);
